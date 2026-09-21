@@ -7,6 +7,7 @@ import {
 import { fileNameFromPath, splitPath, unSplitPath, foldersToBatches } from '../drive/utils';
 import { pull } from './pull';
 import { ConfirmPushModal, ConfirmUndoModal } from '../modals';
+import { checkConnection } from '../drive/client';
 
 export { ConfirmPushModal, ConfirmUndoModal };
 
@@ -15,6 +16,12 @@ export const push = async (
 	skipConfirmation = false,
 ) => {
 	if (t.syncing) return;
+
+	if (!(await checkConnection())) {
+		new Notice('No internet connection. Please try again when connected.');
+		return;
+	}
+
 	const initialOperations = Object.entries(t.settings.operations).sort(
 		([a], [b]) => (a < b ? -1 : a > b ? 1 : 0),
 	); // Alphabetical

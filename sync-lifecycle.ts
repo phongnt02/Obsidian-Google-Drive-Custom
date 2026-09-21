@@ -2,40 +2,25 @@ import type ObsidianGoogleDrive from './main';
 import { Notice } from 'obsidian';
 import { checkConnection } from './helpers/drive/client';
 
-export interface PluginSettings {
-	refreshToken: string;
-	clientId: string;
-	clientSecret: string;
-	autoPush: boolean;
-	operations: Record<string, 'create' | 'delete' | 'modify'>;
-	driveIdToPath: Record<string, string>;
-	rootFolderId: string;
-	lastSyncedAt: number;
-	changesToken: string;
-}
-
-export const DEFAULT_SETTINGS: PluginSettings = {
-	refreshToken: '',
-	clientId: '',
-	clientSecret: '',
-	autoPush: false,
-	operations: {},
-	driveIdToPath: {},
-	rootFolderId: '',
-	lastSyncedAt: 0,
-	changesToken: '',
-};
-
 export const startSync = async (t: ObsidianGoogleDrive) => {
+	if (t.syncing) {
+		new Notice('Sync already in progress.');
+		throw new Error('Sync already in progress');
+	}
+
+	t.syncing = true;
+	t.clearAutoPushTimer();
+	t.ribbonIcon.addClass('spin');
+
 	if (!(await checkConnection())) {
+		t.syncing = false;
+		t.ribbonIcon.removeClass('spin');
 		new Notice(
 			'You are not connected to the internet, so you cannot sync right now. Please try syncing once you have connection again.',
 		);
 		throw new Error('No internet connection');
 	}
-	t.clearAutoPushTimer();
-	t.ribbonIcon.addClass('spin');
-	t.syncing = true;
+
 	return new Notice('Syncing (0%)', 0);
 };
 
