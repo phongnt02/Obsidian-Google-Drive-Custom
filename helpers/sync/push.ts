@@ -4,6 +4,7 @@ import {
 	batchAsync,
 	getSyncMessage,
 } from '../drive/client';
+import { DriveError } from '../drive/types';
 import { fileNameFromPath, splitPath, unSplitPath, foldersToBatches } from '../drive/utils';
 import { pull } from './pull';
 import { ConfirmPushModal, ConfirmUndoModal } from '../modals';
@@ -14,12 +15,12 @@ export { ConfirmPushModal, ConfirmUndoModal };
 export const push = async (
 	t: ObsidianGoogleDrive,
 	skipConfirmation = false,
-) => {
-	if (t.syncing) return;
+): Promise<boolean> => {
+	if (t.syncing) return false;
 
 	if (!(await checkConnection())) {
 		new Notice('No internet connection. Please try again when connected.');
-		return;
+		return false;
 	}
 
 	const initialOperations = Object.entries(t.settings.operations).sort(
@@ -35,15 +36,12 @@ export const push = async (
 			new ConfirmPushModal(t, initialOperations, resolve).open();
 		}));
 
-	if (!proceed) return;
+	if (!proceed) return false;
 
 	const syncNotice = await t.startSync();
 	try {
-		if (!(await pull(t, true))) return;
-		if (!(await t.drive.getRootFolderId(true))) {
-			new Notice('Could not verify the Google Drive vault folder.');
-			return;
-		}
+		if (!(await pull(t, true))) return false;
+		await t.drive.getRootFolderId(true);
 
 		const operations = Object.entries(t.settings.operations);
 
@@ -62,10 +60,6 @@ export const push = async (
 			include: ['properties'],
 			matches: [{ properties: { config: 'true' } }],
 		});
-		if (!configOnDrive) {
-			new Notice('An error occurred fetching Google Drive files.');
-			return;
-		}
 
 		await Promise.all(
 			configOnDrive.map(async ({ properties }) => {
@@ -85,15 +79,11 @@ export const push = async (
 				new Notice(
 					'Could not identify all Google Drive files to delete.',
 				);
-				return;
+				return false;
 			}
 
 			const uniqueIds = [...new Set(idsToDelete as string[])];
-			const deleteRequest = await t.drive.batchDelete(uniqueIds);
-			if (!deleteRequest) {
-				new Notice('An error occurred deleting Google Drive files.');
-				return;
-			}
+			await t.drive.batchDelete(uniqueIds);
 			uniqueIds.forEach((id) => delete t.settings.driveIdToPath[id]);
 		}
 
@@ -121,12 +111,6 @@ export const push = async (
 								properties: splitPath(folder.path),
 								modifiedTime: new Date().toISOString(),
 							});
-							if (!id) {
-								new Notice(
-									'An error occurred creating Google Drive folders.',
-								);
-								return;
-							}
 
 							completed++;
 							syncNotice.setMessage(
@@ -153,12 +137,6 @@ export const push = async (
 							modifiedTime: new Date().toISOString(),
 						},
 					);
-					if (!id) {
-						new Notice(
-							'An error occurred creating Google Drive files.',
-						);
-						return;
-					}
 
 					completed++;
 					syncNotice.setMessage(
@@ -186,17 +164,11 @@ export const push = async (
 
 			await batchAsync(
 				files.map((file) => async () => {
-					const id = await t.drive.updateFile(
+					await t.drive.updateFile(
 						pathToId[file.path] as string,
 						new Blob([await vault.readBinary(file)]),
 						{ modifiedTime: new Date().toISOString() },
 					);
-					if (!id) {
-						new Notice(
-							'An error occurred modifying Google Drive files.',
-						);
-						return;
-					}
 
 					completed++;
 					syncNotice.setMessage(
@@ -216,9 +188,9 @@ export const push = async (
 			}
 		});
 
-		foldersToCreate.forEach((folder) => {
+		for (const folder of foldersToCreate) {
 			if (pathsToIds[folder]) foldersToCreate.delete(folder);
-		});
+		}
 
 		if (foldersToCreate.size) {
 			const batches = foldersToBatches(Array.from(foldersToCreate));
@@ -237,12 +209,6 @@ export const push = async (
 							},
 							modifiedTime: new Date().toISOString(),
 						});
-						if (!id) {
-							new Notice(
-								'An error occurred creating Google Drive folders.',
-							);
-							return;
-						}
 
 						t.settings.driveIdToPath[id] = folder;
 						pathsToIds[folder] = id;
@@ -271,12 +237,6 @@ export const push = async (
 						modifiedTime: new Date().toISOString(),
 					},
 				);
-				if (!id) {
-					new Notice(
-						'An error occurred creating Google Drive config files.',
-					);
-					return;
-				}
 
 				t.settings.driveIdToPath[id] = path;
 				pathsToIds[path] = id;
@@ -293,9 +253,21 @@ export const push = async (
 
 		t.settings.operations = {};
 
-		if (!(await t.endSync(syncNotice, false))) return;
+		if (!(await t.endSync(syncNotice, false))) return false;
 
 		new Notice('Sync complete!');
+		return true;
+	} catch (error) {
+		t.abortSync(syncNotice);
+		if (error instanceof DriveError) {
+			new Notice(error.userMessage, 8000);
+		} else {
+			const msg =
+				error instanceof Error ? error.message : String(error);
+			new Notice(`Sync failed: ${msg}`, 8000);
+		}
+		console.error('Google Drive push failed', error);
+		return false;
 	} finally {
 		if (t.syncing) t.abortSync(syncNotice);
 	}

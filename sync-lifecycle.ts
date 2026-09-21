@@ -44,7 +44,7 @@ export const endSync = async (
 		);
 	}
 
-	const changesToken = await t.drive.getChangesStartToken();
+	const changesToken = await t.drive.getChangesStartToken().catch(() => null);
 	if (!changesToken) {
 		new Notice(
 			'An error occurred fetching Google Drive changes token.',

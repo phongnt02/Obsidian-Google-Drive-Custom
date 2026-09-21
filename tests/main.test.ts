@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { DriveError } from '../helpers/drive/types';
 
 vi.stubGlobal('window', globalThis);
 
@@ -140,7 +141,9 @@ describe('ObsidianGoogleDrive sync lifecycle', () => {
 
 	it('leaves the previous checkpoint intact when fetching one fails', async () => {
 		const plugin = createPlugin();
-		plugin.drive.getChangesStartToken = vi.fn(async () => undefined);
+		plugin.drive.getChangesStartToken = vi.fn(async () => {
+			throw new DriveError('Failed to get changes token', 'getChangesStartToken');
+		});
 
 		await expect(plugin.endSync(undefined, false)).resolves.toBe(false);
 

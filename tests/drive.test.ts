@@ -128,7 +128,7 @@ describe('Drive batch deletion', () => {
 
 		await expect(
 			drive.batchDelete(['file-1', 'missing-file']),
-		).resolves.toBeUndefined();
+		).rejects.toThrow('Batch delete partially failed');
 	});
 });
 

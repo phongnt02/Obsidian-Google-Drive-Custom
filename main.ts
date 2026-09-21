@@ -113,12 +113,15 @@ export default class ObsidianGoogleDrive extends Plugin {
 			void checkConnection().then(async (connected) => {
 				if (!connected) return;
 
-				this.syncing = true;
-				this.ribbonIcon.addClass('spin');
 				try {
-					if (await pull(this, true)) await endSync(this);
-				} finally {
-					if (this.syncing) abortSync(this);
+					const syncNotice = await startSync(this);
+					if (await pull(this, true)) {
+						await endSync(this, syncNotice);
+					}
+				} catch (error) {
+					// startSync shows its own Notice before throwing
+					// pull/endSync errors are handled by their own catch blocks
+					console.error('Startup sync failed', error);
 				}
 			});
 		});

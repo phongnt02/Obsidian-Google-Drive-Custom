@@ -34,3 +34,30 @@ export type Operation = 'create' | 'delete' | 'modify';
 
 export const folderMimeType =
 	'application/vnd.google-apps.folder';
+
+export class DriveError extends Error {
+	declare cause: unknown;
+
+	constructor(
+		message: string,
+		public readonly operation: string,
+		public readonly details?: {
+			path?: string;
+			driveId?: string;
+			httpStatus?: number;
+			cause?: unknown;
+		},
+	) {
+		super(message);
+		this.name = 'DriveError';
+		if (details?.cause) this.cause = details.cause;
+	}
+
+	get userMessage(): string {
+		const parts = [this.message];
+		if (this.details?.path) parts.push(`File: ${this.details.path}`);
+		if (this.details?.httpStatus)
+			parts.push(`HTTP ${this.details.httpStatus}`);
+		return parts.join(' — ');
+	}
+}

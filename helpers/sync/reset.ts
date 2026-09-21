@@ -7,6 +7,7 @@ import {
 	splitPath,
 	unSplitPath,
 } from '../drive/client';
+import { DriveError } from '../drive/types';
 import { Notice, TAbstractFile, TFile, Modal, Setting } from 'obsidian';
 import { pull } from './pull';
 
@@ -42,17 +43,17 @@ export class ConfirmResetModal extends Modal {
 	}
 }
 
-export const reset = async (t: ObsidianGoogleDrive) => {
-	if (t.syncing) return;
+export const reset = async (t: ObsidianGoogleDrive): Promise<boolean> => {
+	if (t.syncing) return false;
 
 	const proceed = await new Promise<boolean>((resolve) => {
 		new ConfirmResetModal(t, resolve).open();
 	});
-	if (!proceed) return;
+	if (!proceed) return false;
 
 	const syncNotice = await t.startSync();
 	try {
-		if (!(await pull(t, true))) return;
+		if (!(await pull(t, true))) return false;
 
 		const { vault } = t.app;
 
@@ -93,11 +94,6 @@ export const reset = async (t: ObsidianGoogleDrive) => {
 							filePathToId[file.path] as string,
 						),
 					]);
-					if (!onlineFile || !metadata) {
-						return new Notice(
-							'An error occurred fetching Google Drive files.',
-						);
-					}
 
 					completed++;
 					syncNotice.setMessage(
@@ -119,10 +115,6 @@ export const reset = async (t: ObsidianGoogleDrive) => {
 					properties: splitPath(path),
 				})),
 			});
-			if (!files) {
-				new Notice('An error occurred fetching Google Drive files.');
-				return;
-			}
 
 			const pathToFile = Object.fromEntries(
 				files.map((file) => [unSplitPath(file.properties), file]),
@@ -155,11 +147,7 @@ export const reset = async (t: ObsidianGoogleDrive) => {
 					const onlineFile = await t.drive
 						.getFile(filePathToId[path] as string)
 						.arrayBuffer();
-					if (!onlineFile) {
-						return new Notice(
-							'An error occurred fetching Google Drive files.',
-						);
-					}
+
 					completed++;
 					syncNotice.setMessage(
 						getSyncMessage(66, 99, completed, deletedFiles.length),
@@ -175,9 +163,21 @@ export const reset = async (t: ObsidianGoogleDrive) => {
 
 		t.settings.operations = {};
 
-		if (!(await t.endSync(syncNotice))) return;
+		if (!(await t.endSync(syncNotice))) return false;
 
 		new Notice('Reset complete.');
+		return true;
+	} catch (error) {
+		t.abortSync(syncNotice);
+		if (error instanceof DriveError) {
+			new Notice(error.userMessage, 8000);
+		} else {
+			const msg =
+				error instanceof Error ? error.message : String(error);
+			new Notice(`Reset failed: ${msg}`, 8000);
+		}
+		console.error('Google Drive reset failed', error);
+		return false;
 	} finally {
 		if (t.syncing) t.abortSync(syncNotice);
 	}

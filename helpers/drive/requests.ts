@@ -1,5 +1,6 @@
 import type ObsidianGoogleDrive from '../../main';
 import { Notice, requestUrl, RequestUrlResponse } from 'obsidian';
+import { DriveError } from './types';
 
 interface RequestOptions {
 	body?: BodyInit;
@@ -84,12 +85,13 @@ export const getDriveAgent = (t: ObsidianGoogleDrive) => {
 				throw: false,
 			});
 
-			if (result.status < 200 || result.status >= 300) {
-				new Notice(`Error: ${result.text}`);
-				throw new Error(
-					`Request failed with status ${result.status}: ${result.text}`,
-				);
-			}
+		if (result.status < 200 || result.status >= 300) {
+			throw new DriveError(
+				`Google Drive API error: ${result.status}`,
+				'httpRequest',
+				{ httpStatus: result.status },
+			);
+		}
 			return toDriveResponse(result);
 		})();
 

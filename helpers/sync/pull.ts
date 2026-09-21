@@ -8,6 +8,7 @@ import {
 	getSyncMessage,
 	unSplitPath,
 } from '../drive/client';
+import { DriveError } from '../drive/types';
 import { refreshAccessToken } from '../drive/requests';
 
 export const pull = async (t: ObsidianGoogleDrive, silenceNotices = false) => {
@@ -41,11 +42,6 @@ export const pull = async (t: ObsidianGoogleDrive, silenceNotices = false) => {
 				},
 			],
 		});
-		if (!recentlyModified) {
-			new Notice('An error occurred fetching Google Drive files.');
-			t.abortSync(syncNotice);
-			return false;
-		}
 
 		const cloudSet = new Set(
 			Object.values(t.settings.driveIdToPath).filter(
@@ -99,11 +95,6 @@ export const pull = async (t: ObsidianGoogleDrive, silenceNotices = false) => {
 		});
 
 		const changes = await t.drive.getChanges(t.settings.changesToken);
-		if (!changes) {
-			new Notice('An error occurred fetching Google Drive changes.');
-			t.abortSync(syncNotice);
-			return false;
-		}
 		const removedPaths = Object.fromEntries(
 			changes
 				.filter(({ removed }) => removed)
@@ -375,7 +366,15 @@ export const pull = async (t: ObsidianGoogleDrive, silenceNotices = false) => {
 		return ended;
 	} catch (error) {
 		t.abortSync(syncNotice);
-		new Notice('Sync failed unexpectedly. Please try again.');
+		if (!silenceNotices) {
+			if (error instanceof DriveError) {
+				new Notice(error.userMessage, 8000);
+			} else {
+				const msg =
+					error instanceof Error ? error.message : String(error);
+				new Notice(`Sync failed: ${msg}`, 8000);
+			}
+		}
 		console.error('Google Drive pull failed', error);
 		return false;
 	}

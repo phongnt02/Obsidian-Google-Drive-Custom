@@ -1,11 +1,11 @@
 import type ObsidianGoogleDrive from '../../main';
 import { getDriveAgent } from './requests';
 import { requestUrl, TAbstractFile, TFolder } from 'obsidian';
-import type { Change, FileMetadata, QueryMatch } from './types';
+import { DriveError, type Change, type FileMetadata, type QueryMatch } from './types';
 import { escapeQueryValue, buildQuery } from './query';
 import { splitPath, unSplitPath, fileNameFromPath } from './utils';
 
-export { type FileMetadata, type QueryMatch, type Change } from './types';
+export { type FileMetadata, type QueryMatch, type Change, DriveError } from './types';
 export { folderMimeType } from './types';
 export { splitPath, unSplitPath, fileNameFromPath, foldersToBatches, batchAsync } from './utils';
 export { escapeQueryValue, buildQuery } from './query';
@@ -53,31 +53,44 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 		pageSize?: number;
 		include?: (keyof FileMetadata)[];
 	}) => {
-		const files = await drive
-			.get(
-				`drive/v3/files?fields=nextPageToken,files(${include.join(
-					',',
-				)})&pageSize=${pageSize}&q=${
-					matches
-						? buildQuery(matches, t.app.vault.getName())
-						: encodeURIComponent(
-								"trashed=false and properties has { key='vault' and value='" +
-									escapeQueryValue(t.app.vault.getName()) +
-									"'}",
-							)
-				}${
-					matches?.find(({ query }) => query)
-						? ''
-						: '&orderBy=name' +
-							(order === 'ascending' ? '' : ' desc')
-				}${pageToken ? '&pageToken=' + pageToken : ''}`,
-			)
-			.json();
-		if (!files) return;
-		return files as {
-			nextPageToken?: string;
-			files: FileMetadata[];
-		};
+		try {
+			const files = await drive
+				.get(
+					`drive/v3/files?fields=nextPageToken,files(${include.join(
+						',',
+					)})&pageSize=${pageSize}&q=${
+						matches
+							? buildQuery(matches, t.app.vault.getName())
+							: encodeURIComponent(
+									"trashed=false and properties has { key='vault' and value='" +
+										escapeQueryValue(t.app.vault.getName()) +
+										"'}",
+								)
+					}${
+						matches?.find(({ query }) => query)
+							? ''
+							: '&orderBy=name' +
+								(order === 'ascending' ? '' : ' desc')
+					}${pageToken ? '&pageToken=' + pageToken : ''}`,
+				)
+				.json();
+			if (!files)
+				throw new DriveError(
+					'Failed to fetch files from Google Drive',
+					'searchFiles',
+				);
+			return files as {
+				nextPageToken?: string;
+				files: FileMetadata[];
+			};
+		} catch (error) {
+			if (error instanceof DriveError) throw error;
+			throw new DriveError(
+				'Network error while fetching files from Google Drive',
+				'searchFiles',
+				{ cause: error },
+			);
+		}
 	};
 
 	const searchFiles = async (
@@ -89,7 +102,6 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 		includeObsidian = false,
 	) => {
 		const files = await paginateFiles({ ...data, pageSize: 1000 });
-		if (!files) return;
 
 		while (files.nextPageToken) {
 			const nextPage = await paginateFiles({
@@ -97,7 +109,6 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 				pageToken: files.nextPageToken,
 				pageSize: 1000,
 			});
-			if (!nextPage) return;
 			files.files.push(...nextPage.files);
 			files.nextPageToken = nextPage.nextPageToken;
 		}
@@ -126,7 +137,6 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 			},
 			true,
 		);
-		if (!files) return;
 		if (!files.length) {
 			const rootFolder = await drive
 				.post(`drive/v3/files`, {
@@ -141,12 +151,20 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 					},
 				})
 				.json<{ id: string }>();
-			if (!rootFolder) return;
+			if (!rootFolder)
+				throw new DriveError(
+					'Failed to create root vault folder on Google Drive',
+					'getRootFolderId',
+				);
 			await persistRootFolderId(rootFolder.id);
 			return rootFolder.id;
 		}
 		const id = files[0]?.id;
-		if (!id) return;
+		if (!id)
+			throw new DriveError(
+				'Root vault folder exists but has no ID',
+				'getRootFolderId',
+			);
 		await persistRootFolderId(id);
 		return id;
 	};
@@ -166,7 +184,6 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 	}) => {
 		if (!parent) {
 			parent = await getRootFolderId();
-			if (!parent) return;
 		}
 
 		if (!properties) properties = {};
@@ -184,7 +201,11 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 				},
 			})
 			.json<{ id: string }>();
-		if (!folder) return;
+		if (!folder)
+			throw new DriveError(
+				`Failed to create folder "${name}" on Google Drive`,
+				'createFolder',
+			);
 		return folder.id;
 	};
 
@@ -196,7 +217,6 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 	) => {
 		if (!parent) {
 			parent = await getRootFolderId();
-			if (!parent) return;
 		}
 
 		if (!metadata) metadata = {};
@@ -227,7 +247,12 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 				body: form,
 			})
 			.json<{ id: string }>();
-		if (!result) return;
+		if (!result)
+			throw new DriveError(
+				`Failed to upload file "${name}" to Google Drive`,
+				'uploadFile',
+				{ path: metadata.properties?.path as string },
+			);
 
 		return result.id;
 	};
@@ -254,7 +279,12 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 				},
 			)
 			.json<{ id: string }>();
-		if (!result) return;
+		if (!result)
+			throw new DriveError(
+				`Failed to update file on Google Drive`,
+				'updateFile',
+				{ driveId: id },
+			);
 
 		return result.id;
 	};
@@ -268,13 +298,23 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 				json: metadata,
 			})
 			.json<{ id: string }>();
-		if (!result) return;
+		if (!result)
+			throw new DriveError(
+				`Failed to update file metadata on Google Drive`,
+				'updateFileMetadata',
+				{ driveId: id },
+			);
 		return result.id;
 	};
 
 	const deleteFile = async (id: string) => {
 		const result = await drive.delete(`drive/v3/files/${id}`);
-		if (!result.ok) return;
+		if (!result.ok)
+			throw new DriveError(
+				`Failed to delete file on Google Drive`,
+				'deleteFile',
+				{ driveId: id },
+			);
 		return true;
 	};
 
@@ -330,7 +370,11 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 				},
 				body,
 			});
-			if (!response.ok) return;
+			if (!response.ok)
+				throw new DriveError(
+					`Failed to batch delete files on Google Drive`,
+					'batchDelete',
+				);
 
 			const result = await response.text();
 			const statuses = Array.from(
@@ -341,18 +385,34 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 				statuses.length !== batch.length ||
 				statuses.some((status) => status < 200 || status >= 300)
 			) {
-				return;
+				throw new DriveError(
+					`Batch delete partially failed on Google Drive`,
+					'batchDelete',
+				);
 			}
 		}
 		return true;
 	};
 
 	const getChangesStartToken = async () => {
-		const result = await drive
-			.get(`drive/v3/changes/startPageToken`)
-			.json<{ startPageToken: string }>();
-		if (!result) return;
-		return result.startPageToken;
+		try {
+			const result = await drive
+				.get(`drive/v3/changes/startPageToken`)
+				.json<{ startPageToken: string }>();
+			if (!result)
+				throw new DriveError(
+					'Failed to get changes start token from Google Drive',
+					'getChangesStartToken',
+				);
+			return result.startPageToken;
+		} catch (error) {
+			if (error instanceof DriveError) throw error;
+			throw new DriveError(
+				'Network error while getting changes token',
+				'getChangesStartToken',
+				{ cause: error },
+			);
+		}
 	};
 
 	const getChanges = async (startToken: string) => {
@@ -373,17 +433,34 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 					newStartPageToken?: string;
 				}>();
 
-		const result = await request(startToken);
-		if (!result) return;
-		while (result.nextPageToken) {
-			const nextPage = await request(result.nextPageToken);
-			if (!nextPage) return;
-			result.changes.push(...nextPage.changes);
-			result.newStartPageToken = nextPage.newStartPageToken;
-			result.nextPageToken = nextPage.nextPageToken;
-		}
+		try {
+			const result = await request(startToken);
+			if (!result)
+				throw new DriveError(
+					'Failed to get changes from Google Drive',
+					'getChanges',
+				);
+			while (result.nextPageToken) {
+				const nextPage = await request(result.nextPageToken);
+				if (!nextPage)
+					throw new DriveError(
+						'Failed to get next page of changes from Google Drive',
+						'getChanges',
+					);
+				result.changes.push(...nextPage.changes);
+				result.newStartPageToken = nextPage.newStartPageToken;
+				result.nextPageToken = nextPage.nextPageToken;
+			}
 
-		return result.changes;
+			return result.changes;
+		} catch (error) {
+			if (error instanceof DriveError) throw error;
+			throw new DriveError(
+				'Network error while fetching changes from Google Drive',
+				'getChanges',
+				{ cause: error },
+			);
+		}
 	};
 
 	const deleteFilesMinimumOperations = async (files: TAbstractFile[]) => {

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DriveError } from '../helpers/drive/types';
 
 const notice = vi.hoisted(() => vi.fn());
 
@@ -35,7 +36,9 @@ describe('fixDrivePath', () => {
 			settings: {
 				driveIdToPath: { stale: 'old/path.md' },
 				operations: { 'pending.md': 'create' },
+				changesToken: 'old-token',
 			},
+			saveSettings: vi.fn(async () => undefined),
 		};
 
 		await fixDrivePath(plugin as never);
@@ -48,8 +51,10 @@ describe('fixDrivePath', () => {
 			'split-path-id': 'long/folder/nested/note.md',
 		});
 		expect(plugin.settings.operations).toEqual({});
+		expect(plugin.settings.changesToken).toBe('');
 		expect(notice).toHaveBeenCalledWith(
 			'Google Drive paths have been fixed. Please restart the plugin to apply changes.',
+			0,
 		);
 	});
 
@@ -57,8 +62,13 @@ describe('fixDrivePath', () => {
 		const driveIdToPath = { existing: 'note.md' };
 		const operations = { 'pending.md': 'modify' };
 		const plugin = {
-			drive: { searchFiles: vi.fn(async () => undefined) },
-			settings: { driveIdToPath, operations },
+			drive: {
+				searchFiles: vi.fn(async () => {
+					throw new DriveError('Failed to fetch files', 'searchFiles');
+				}),
+			},
+			settings: { driveIdToPath, operations, changesToken: 'old-token' },
+			saveSettings: vi.fn(async () => undefined),
 		};
 
 		await fixDrivePath(plugin as never);
@@ -66,7 +76,8 @@ describe('fixDrivePath', () => {
 		expect(plugin.settings.driveIdToPath).toBe(driveIdToPath);
 		expect(plugin.settings.operations).toBe(operations);
 		expect(notice).toHaveBeenCalledWith(
-			'An error occurred fetching Google Drive files.',
+			expect.stringContaining('Failed to fetch files'),
+			8000,
 		);
 	});
 });

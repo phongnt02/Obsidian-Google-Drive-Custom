@@ -48,6 +48,8 @@ export const fileNameFromPath = (path: string) =>
  * @returns Batches in increasing order of depth
  */
 export const foldersToBatches = <T = string | TFolder>(folders: T[]) => {
+	if (!folders.length) return [];
+
 	const batches: (typeof folders)[] = new Array(
 		Math.max(
 			...folders.map(
