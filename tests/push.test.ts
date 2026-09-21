@@ -76,6 +76,18 @@ vi.mock('obsidian', () => {
 	};
 });
 
+vi.mock('../helpers/drive/client', () => ({
+	checkConnection: vi.fn(async () => true),
+	getDriveClient: vi.fn(),
+	getSyncMessage: vi.fn(),
+	batchAsync: vi.fn(async (tasks: (() => Promise<void>)[]) => {
+		for (const task of tasks) {
+			await task();
+		}
+	}),
+	foldersToBatches: vi.fn((items: unknown[]) => [items]),
+}));
+
 import { TFile, TFolder } from 'obsidian';
 import { ConfirmUndoModal, push } from '../helpers/sync/push';
 
