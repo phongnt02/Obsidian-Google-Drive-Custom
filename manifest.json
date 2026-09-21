@@ -1,11 +1,9 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
-	"version": "1.0.0",
-	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"id": "google-drive-sync",
+	"name": "Google Drive Sync",
+	"version": "3.2.0",
+	"minAppVersion": "1.13.0",
+	"description": "Syncs a vault into Google Drive for cross-platform use (works for iOS).",
+	"author": "kinph",
 	"isDesktopOnly": false
 }
