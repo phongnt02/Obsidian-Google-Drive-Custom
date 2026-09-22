@@ -7,6 +7,7 @@ import {
 	App,
 	debounce,
 	Notice,
+	Platform,
 	Plugin,
 	PluginSettingTab,
 	type SettingDefinitionItem,
@@ -277,8 +278,10 @@ class SettingsTab extends PluginSettingTab {
 	}
 
 	getSettingDefinitions(): SettingDefinitionItem[] {
-		return [
-			{
+		const settings: SettingDefinitionItem[] = [];
+
+		if (Platform.isDesktop) {
+			settings.push({
 				name: 'Setup Guide',
 				render: (setting) => {
 					setting.settingEl.empty();
@@ -287,67 +290,40 @@ class SettingsTab extends PluginSettingTab {
 						cls: 'ogd-setup-guide',
 					});
 
-					container.createEl('h3', { text: 'Setup Instructions' });
+					const details = container.createEl('details');
+					const summary = details.createEl('summary');
+					summary.createEl('span', { text: 'Setup Guide' });
+
+					const content = details.createDiv({
+						cls: 'ogd-setup-content',
+					});
 
 					const steps = [
 						{
-							title: '1. Create Google Cloud Project',
+							title: '1. Google Cloud Console',
 							items: [
-								'Go to Google Cloud Console',
-								'Create a new project or select existing one',
+								'Create a new project or select existing',
+								'Enable Google Drive API',
 							],
 						},
 						{
-							title: '2. Enable Google Drive API',
+							title: '2. OAuth Consent Screen',
 							items: [
-								'Go to APIs & Services > Library',
-								'Search for "Google Drive API"',
-								'Click "Enable"',
+								'Select "External" user type',
+								'Add your email as test user',
 							],
 						},
 						{
-							title: '3. Configure OAuth Consent Screen',
+							title: '3. Create Credentials',
 							items: [
-								'Go to APIs & Services > OAuth consent screen',
-								'Select "External" user type (or "Internal" for Google Workspace)',
-								'Fill in app name and user support email',
-								'Add your email as developer contact',
-								'Save and continue through scopes and test users',
-							],
-						},
-						{
-							title: '4. Add Test Users (Important!)',
-							items: [
-								'In OAuth consent screen, go to "Test users" section',
-								'Click "Add users"',
-								'Add ALL Google accounts you want to use with this plugin',
-								'Save',
-							],
-						},
-						{
-							title: '5. Create OAuth Client ID',
-							items: [
-								'Go to APIs & Services > Credentials',
-								'Click "Create Credentials" > "OAuth client ID"',
-								'Select "Desktop app" as application type',
-								'Name it (e.g., "Obsidian Google Drive Sync")',
-								'Click "Create"',
-								'Copy the Client ID and Client Secret',
-							],
-						},
-						{
-							title: '6. Configure This Plugin',
-							items: [
-								'Enter Client ID and Client Secret below',
-								'Click "Login with Google"',
-								'Authorize in the browser window that opens',
-								'You\'re done! Start syncing.',
+								'Create OAuth client ID → "Desktop app"',
+								'Copy Client ID and Client Secret',
 							],
 						},
 					];
 
 					steps.forEach((step) => {
-						const stepEl = container.createDiv({
+						const stepEl = content.createDiv({
 							cls: 'ogd-setup-step',
 						});
 						stepEl.createEl('h4', { text: step.title });
@@ -357,22 +333,21 @@ class SettingsTab extends PluginSettingTab {
 						});
 					});
 
-					const warningEl = container.createDiv({
+					const warningEl = content.createDiv({
 						cls: 'ogd-setup-warning',
 					});
-					warningEl.createEl('h4', { text: 'Important Notes' });
-					const warningList = warningEl.createEl('ul');
 					[
-						'You MUST use "Desktop app" OAuth client type (not "Web application")',
-						'You MUST add your email as a test user in OAuth consent screen',
-						'First sync may take a while depending on your vault size',
-						'Always backup your vault before first sync',
-						'Edit files on one device at a time to avoid conflicts',
+						'OAuth type must be "Desktop app"',
+						'Add your email as test user',
+						'Backup vault before first sync',
 					].forEach((note) => {
-						warningList.createEl('li', { text: note });
+						warningEl.createEl('p', { text: `⚠️ ${note}` });
 					});
 				},
-			},
+			});
+		}
+
+		settings.push(
 			{
 				name: 'Client ID',
 				desc: 'OAuth client ID from Google Cloud Console.',
@@ -400,16 +375,15 @@ class SettingsTab extends PluginSettingTab {
 					},
 				},
 			},
-			{
-				name: 'Login with Google',
-				desc: 'Click to authorize with your Google account. This will open a browser window for authentication.',
+		);
+
+		if (Platform.isDesktop) {
+			settings.push({
+				name: 'Login',
 				render: (setting) => {
 					setting.settingEl.empty();
 
-					setting.nameEl.createEl('span', { text: 'Login with Google' });
-					setting.descEl.createEl('span', {
-						text: 'Click to authorize with your Google account. This will open a browser window for authentication.',
-					});
+					setting.nameEl.createEl('span', { text: 'Login' });
 
 					new Setting(setting.settingEl)
 						.addButton((btn) =>
@@ -460,7 +434,24 @@ class SettingsTab extends PluginSettingTab {
 								}),
 						);
 				},
-			},
+			});
+		}
+
+		if (!Platform.isDesktop) {
+			settings.push({
+				name: 'Setup',
+				render: (setting) => {
+					setting.settingEl.empty();
+
+					setting.nameEl.createEl('span', { text: 'Setup' });
+					setting.descEl.createEl('span', {
+						text: 'Login requires Desktop Obsidian. Setup on Desktop → copy refresh_token → paste below.',
+					});
+				},
+			});
+		}
+
+		settings.push(
 			{
 				name: 'Refresh token',
 				desc: 'Auto-filled after login. You can also paste a refresh token manually.',
@@ -523,7 +514,9 @@ class SettingsTab extends PluginSettingTab {
 					defaultValue: false,
 				},
 			},
-		];
+		);
+
+		return settings;
 	}
 
 	async setControlValue(key: string, value: unknown) {

@@ -1,3 +1,5 @@
+import { Platform } from 'obsidian';
+
 export interface PluginSettings {
 	refreshToken: string;
 	clientId: string;

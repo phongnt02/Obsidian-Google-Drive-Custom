@@ -56,3 +56,24 @@
 	color: var(--text-error);
 	font-weight: bolder;
 }
+
+.ogd-setup-guide summary {
+	cursor: pointer;
+	font-weight: bold;
+}
+
+.ogd-setup-guide .ogd-setup-content {
+	margin-top: 8px;
+}
+
+.ogd-setup-step h4 {
+	margin-bottom: 4px;
+}
+
+.ogd-setup-step ul {
+	margin-top: 0;
+}
+
+.ogd-setup-warning p {
+	margin: 2px 0;
+}
